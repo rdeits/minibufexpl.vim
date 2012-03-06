@@ -304,7 +304,7 @@ endif
 " double click for tab selection.
 
 if !exists('g:miniBufExplUseSingleClick')
-  let g:miniBufExplUseSingleClick = 0
+  let g:miniBufExplUseSingleClick = 1
 endif 
 
 "
@@ -399,6 +399,8 @@ setlocal updatetime=300
 augroup MiniBufExplorer
 autocmd MiniBufExplorer BufDelete      * call <SID>DEBUG('-=> BufDelete AutoCmd', 10) |call <SID>AutoUpdate(expand('<abuf>'),bufnr("%"))
 autocmd MiniBufExplorer BufDelete      * call <SID>DEBUG('-=> BufDelete ModTrackingListClean AutoCmd for buffer '.bufnr("%"), 10) |call <SID>CleanModTrackingList(bufnr("%"))
+"disallow insert mode in MiniBufExplorer
+autocmd BufEnter -MiniBufExplorer- stopinsert
 autocmd MiniBufExplorer BufEnter       * call <SID>DEBUG('-=> BufEnter AutoCmd', 10) |call <SID>AutoUpdate(-1,bufnr("%"))
 autocmd MiniBufExplorer BufEnter       * call <SID>DEBUG('-=> BufEnter Checking for Last window', 10) |call <SID>CheckForLastWindow()
 autocmd MiniBufExplorer BufWritePost   * call <SID>DEBUG('-=> BufWritePost AutoCmd', 10) |call <SID>AutoUpdate(-1,bufnr("%"))
@@ -673,7 +675,7 @@ function! <SID>FindCreateWindow(bufName, forceEdge, isExplorer, doDebug)
     exec l:winNum.' wincmd w'
     let l:winFound = 1
   else
-
+    if !g:miniBufExplNERDTreeMode
       if g:miniBufExplSplitToEdge == 1 || a:forceEdge >= 0
 
           let l:edge = &splitbelow
@@ -707,6 +709,11 @@ function! <SID>FindCreateWindow(bufName, forceEdge, isExplorer, doDebug)
               endif
           endif
       endif
+    else
+      exec '1 wincmd w'
+      normal gg
+      exec 'bel 15sp '.a:bufName
+    endif
 
     let g:miniBufExplForceDisplay = 1
 
@@ -785,6 +792,11 @@ endfunction
 " window so that we can fit all of our information without taking extra lines.
 "
 function! <SID>ResizeWindow()
+  if g:miniBufExplNERDTreeMode == 1
+      let g:miniBufExplVSplit = 31
+  else
+      let g:miniBufExplVSplit = 0
+  endif
   call <SID>DEBUG('Entering ResizeWindow()',10)
 
   " Make sure we are in our window
@@ -854,6 +866,7 @@ function! <SID>ResizeWindow()
       call <SID>DEBUG('ResizeWindow to '.l:newWidth.' columns',9)
       exec('vertical resize '.l:newWidth)
     endif
+    normal gg
 
   endif
   
@@ -1098,6 +1111,7 @@ function! <SID>BuildBufferList(delBufNum, updateBufList, currBufName)
 
         " Establish the tab's content, including the differentiating root
         " dir if neccessary
+        let l:prefix = ''
         let l:tab = '['
         if g:miniBufExplShowBufNumbers == 1
             let l:tab .= l:i.':'
@@ -1113,21 +1127,26 @@ function! <SID>BuildBufferList(delBufNum, updateBufList, currBufName)
             let l:tab .= s:bufPathPrefix.l:bufSplitPath[-1].']'
         endif
 
-        " If the buffer is open in a window mark it
-        if bufwinnr(l:i) != -1
-            let l:tab .= '*'
-        endif
-
-        " If the buffer is modified then mark it
-        if(getbufvar(l:i, '&modified') == 1)
-            let l:tab .= '+'
-        endif
-
         " If the buffer matches the)current buffer name, then  mark it
         call <SID>DEBUG('l:i is '.l:i.' and l:CurrBufName is '.l:CurrBufName,10)
         if(l:i == l:CurrBufName)
-            let l:tab .= '!'
+            let l:prefix .= '>'
+        " If the buffer is open in a window mark it
+        elseif bufwinnr(l:i) != -1
+            let l:prefix .= '*'
+        else
+            let l:prefix .= ' '
         endif
+
+
+        " If the buffer is modified then mark it
+        if(getbufvar(l:i, '&modified') == 1)
+            let l:prefix .= '+'
+        else
+            let l:prefix .= ' '
+        endif
+
+        let l:tab = l:prefix . l:tab
 
         let l:maxTabWidth = <SID>Max(strlen(l:tab), l:maxTabWidth)
         call add(l:tabList, l:tab)
@@ -1362,6 +1381,8 @@ function! <SID>AutoUpdate(delBufNum,currBufName)
   " Only allow updates when the AutoUpdate flag is set
   " this allows us to stop updates on startup.
   if g:miniBufExplorerAutoUpdate == 1
+    " Save the previous window number
+    let l:oldPreviousWindow = winnr("#")
     " Only show MiniBufExplorer if we have a real buffer
     if ((g:miniBufExplorerMoreThanOne == 0) || (bufnr('%') != -1 && bufname('%') != ""))
       if <SID>HasEligibleBuffers(a:delBufNum) == 1
@@ -1382,6 +1403,8 @@ function! <SID>AutoUpdate(delBufNum,currBufName)
 
         " go back to the working buffer
         if (bufname('%') == '-MiniBufExplorer-')
+          wincmd p
+          exec l:oldPreviousWindow . ' wincmd w'
           wincmd p
         endif
       else
